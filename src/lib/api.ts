@@ -13,6 +13,47 @@ export const api = axios.create({
 
 type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
+/**
+ * Nest + Zod cần @Body() là object. Một số trường hợp (retry 401, edge axios)
+ * khiến `data` là chuỗi JSON — server parse ra string → lỗi "expected object, received string".
+ */
+function normalizeJsonBody(data: unknown): unknown {
+  if (data == null || typeof data !== "string") {
+    return data;
+  }
+  try {
+    let parsed: unknown = JSON.parse(data);
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        return data;
+      }
+    }
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      return parsed;
+    }
+  } catch {
+    return data;
+  }
+  return data;
+}
+
+api.interceptors.request.use((config) => {
+  const ct =
+    (config.headers &&
+      (config.headers["Content-Type"] ?? config.headers["content-type"])) ??
+    "";
+  if (typeof ct === "string" && ct.includes("application/json")) {
+    config.data = normalizeJsonBody(config.data);
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -33,7 +74,9 @@ api.interceptors.response.use(
       original._retry = true;
       try {
         await api.post("/auth/refresh");
-        return api(original);
+        const retryCfg = { ...original } as InternalAxiosRequestConfig;
+        retryCfg.data = normalizeJsonBody(retryCfg.data);
+        return api.request(retryCfg);
       } catch {
         return Promise.reject(error);
       }
