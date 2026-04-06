@@ -39,10 +39,18 @@ export default function UsersPage() {
   }>({ email: "", password: "", name: "", saleAccId: "" });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<
-    string,
-    { role: string; saleAccId: string | null }
-  >>({});
+  const [drafts, setDrafts] = useState<
+    Record<
+      string,
+      {
+        role: string;
+        saleAccId: string | null;
+        email: string;
+        name: string;
+        password: string;
+      }
+    >
+  >({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,7 +78,13 @@ export default function UsersPage() {
       const next = { ...cur };
       for (const u of rows) {
         if (!next[u.id]) {
-          next[u.id] = { role: u.role, saleAccId: u.saleAccId };
+          next[u.id] = {
+            role: u.role,
+            saleAccId: u.saleAccId,
+            email: u.email,
+            name: u.name,
+            password: "",
+          };
         }
       }
       return next;
@@ -79,15 +93,29 @@ export default function UsersPage() {
 
   async function saveUser(id: string) {
     const d = drafts[id];
-    if (!d) return;
+    const row = rows.find((r) => r.id === id);
+    if (!d || !row) return;
     setSavingId(id);
     try {
-      await api.put(`/users/${id}`, {
+      const body: Record<string, unknown> = {
         role: d.role,
-        saleAccId: d.saleAccId,
-      });
+        email: d.email.trim(),
+        name: d.name.trim(),
+      };
+      const pw = d.password.trim();
+      if (pw.length > 0) {
+        body.password = pw;
+      }
+      if (!row.saleAccId) {
+        body.saleAccId = d.saleAccId?.trim() ? d.saleAccId.trim() : null;
+      }
+      await api.put(`/users/${id}`, body);
       const { data } = await api.get<UserRow[]>("/users");
       setRows(data);
+      setDrafts((cur) => ({
+        ...cur,
+        [id]: { ...cur[id]!, password: "" },
+      }));
     } finally {
       setSavingId(null);
     }
@@ -137,7 +165,8 @@ export default function UsersPage() {
     <RoleGate roles={["ADMIN"]}>
       <div className="mx-auto max-w-4xl space-y-6">
         <p className="text-sm text-[#a1a5b7]">
-          Danh sách tài khoản — tiêu đề trang hiển thị trên thanh công cụ.
+          Chỉ quản trị viên. Chỉnh vai trò, email, tên, mật khẩu; Sale ACC ID chỉ
+          nhập được một lần (đã có thì không đổi).
         </p>
 
         <Card className="metronic-card overflow-hidden border-[#eff2f5] shadow-[0_0_20px_rgba(76,87,125,0.06)]">
@@ -231,71 +260,176 @@ export default function UsersPage() {
           </CardHeader>
           <CardContent className="p-0">
             <ul className="divide-y divide-[#eff2f5]">
-              {rows.map((u) => (
-                <li
-                  key={u.id}
-                  className="flex flex-col gap-2 px-5 py-4 transition-colors hover:bg-[#f5f8fa] sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-[#181c32]">{u.name}</p>
-                    <p className="text-sm text-[#a1a5b7]">{u.email}</p>
-                    {u.saleAccId && (
-                      <p className="mt-1 text-xs text-[#a1a5b7]">Sale ID: {u.saleAccId}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2 sm:items-end">
-                    <Badge
-                      variant="secondary"
-                      className="w-fit shrink-0 rounded-md border-0 bg-[#009ef7]/10 font-normal text-[#009ef7] hover:bg-[#009ef7]/15"
-                    >
-                      {roleVi[drafts[u.id]?.role ?? u.role] ??
-                        drafts[u.id]?.role ??
-                        u.role}
-                    </Badge>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        value={drafts[u.id]?.role ?? u.role}
-                        onChange={(e) => {
-                          const role = e.target.value;
-                          setDrafts((cur) => ({
-                            ...cur,
-                            [u.id]: { role, saleAccId: cur[u.id]?.saleAccId ?? u.saleAccId },
-                          }));
-                        }}
-                        className="h-9 rounded-md border border-[#eff2f5] bg-white px-2 text-sm"
-                      >
-                        {Object.keys(roleVi).map((r) => (
-                          <option key={r} value={r}>
-                            {roleVi[r] ?? r}
-                          </option>
-                        ))}
-                      </select>
-                      <Input
-                        value={drafts[u.id]?.saleAccId ?? ""}
-                        onChange={(e) =>
-                          setDrafts((cur) => ({
-                            ...cur,
-                            [u.id]: {
-                              role: cur[u.id]?.role ?? u.role,
-                              saleAccId: e.target.value ? e.target.value : null,
-                            },
-                          }))
-                        }
-                        placeholder="SaleAccId (optional)"
-                        className="h-9 w-44"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => void saveUser(u.id)}
-                        disabled={savingId === u.id}
-                        className="h-9 rounded-md bg-[#009ef7] px-3 font-semibold text-white hover:bg-[#0095e8]"
-                      >
-                        {savingId === u.id ? "Saving..." : "Save"}
-                      </Button>
+              {rows.map((u) => {
+                const d = drafts[u.id];
+                const saleLocked = Boolean(u.saleAccId);
+                return (
+                  <li
+                    key={u.id}
+                    className="px-5 py-4 transition-colors hover:bg-[#f5f8fa]"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className="w-fit shrink-0 rounded-md border-0 bg-[#009ef7]/10 font-normal text-[#009ef7] hover:bg-[#009ef7]/15"
+                          >
+                            {roleVi[d?.role ?? u.role] ?? d?.role ?? u.role}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-[#a1a5b7]">Email</p>
+                            <Input
+                              value={d?.email ?? u.email}
+                              onChange={(e) =>
+                                setDrafts((cur) => ({
+                                  ...cur,
+                                  [u.id]: {
+                                    ...(cur[u.id] ?? {
+                                      role: u.role,
+                                      saleAccId: u.saleAccId,
+                                      email: u.email,
+                                      name: u.name,
+                                      password: "",
+                                    }),
+                                    email: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="h-9 rounded-md bg-white"
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-[#a1a5b7]">Tên</p>
+                            <Input
+                              value={d?.name ?? u.name}
+                              onChange={(e) =>
+                                setDrafts((cur) => ({
+                                  ...cur,
+                                  [u.id]: {
+                                    ...(cur[u.id] ?? {
+                                      role: u.role,
+                                      saleAccId: u.saleAccId,
+                                      email: u.email,
+                                      name: u.name,
+                                      password: "",
+                                    }),
+                                    name: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="h-9 rounded-md bg-white"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-[#a1a5b7]">
+                              Mật khẩu mới (để trống nếu không đổi)
+                            </p>
+                            <Input
+                              type="password"
+                              value={d?.password ?? ""}
+                              onChange={(e) =>
+                                setDrafts((cur) => ({
+                                  ...cur,
+                                  [u.id]: {
+                                    ...(cur[u.id] ?? {
+                                      role: u.role,
+                                      saleAccId: u.saleAccId,
+                                      email: u.email,
+                                      name: u.name,
+                                      password: "",
+                                    }),
+                                    password: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="••••••••"
+                              className="h-9 rounded-md bg-white"
+                              autoComplete="new-password"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-[#a1a5b7]">
+                              Sale ACC ID
+                              {saleLocked ? (
+                                <span className="ml-1 font-normal text-[#50cd89]">
+                                  (đã khóa)
+                                </span>
+                              ) : null}
+                            </p>
+                            <Input
+                              value={
+                                saleLocked
+                                  ? (u.saleAccId ?? "")
+                                  : (d?.saleAccId ?? u.saleAccId) ?? ""
+                              }
+                              onChange={(e) =>
+                                setDrafts((cur) => ({
+                                  ...cur,
+                                  [u.id]: {
+                                    ...(cur[u.id] ?? {
+                                      role: u.role,
+                                      saleAccId: u.saleAccId,
+                                      email: u.email,
+                                      name: u.name,
+                                      password: "",
+                                    }),
+                                    saleAccId: e.target.value ? e.target.value : null,
+                                  },
+                                }))
+                              }
+                              disabled={saleLocked}
+                              placeholder="Map Ladiwork/Sepay (chỉ đặt một lần)"
+                              className="h-9 rounded-md bg-white disabled:cursor-not-allowed disabled:opacity-80"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+                        <select
+                          value={d?.role ?? u.role}
+                          onChange={(e) => {
+                            const role = e.target.value;
+                            setDrafts((cur) => ({
+                              ...cur,
+                              [u.id]: {
+                                ...(cur[u.id] ?? {
+                                  role: u.role,
+                                  saleAccId: u.saleAccId,
+                                  email: u.email,
+                                  name: u.name,
+                                  password: "",
+                                }),
+                                role,
+                              },
+                            }));
+                          }}
+                          className="h-9 min-w-[10rem] rounded-md border border-[#eff2f5] bg-white px-2 text-sm"
+                        >
+                          {Object.keys(roleVi).map((r) => (
+                            <option key={r} value={r}>
+                              {roleVi[r] ?? r}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          onClick={() => void saveUser(u.id)}
+                          disabled={savingId === u.id}
+                          className="h-9 rounded-md bg-[#009ef7] px-4 font-semibold text-white hover:bg-[#0095e8]"
+                        >
+                          {savingId === u.id ? "Đang lưu..." : "Lưu"}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
               {rows.length === 0 && (
                 <li className="px-5 py-12 text-center text-sm text-[#a1a5b7]">
                   Chưa có dữ liệu người dùng.
