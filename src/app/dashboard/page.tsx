@@ -1,6 +1,6 @@
  "use client";
 
-import { TrendingUp, UsersRound } from "lucide-react";
+import { Copy, TrendingUp, UsersRound } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -9,10 +9,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useAuthStore, type Role } from "@/stores/auth-store";
 import { RoleGate } from "@/components/auth/role-gate";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import {
   countsFromStages,
@@ -181,6 +183,10 @@ type LadipagePipelineResponse = {
   batchMarketingCosts: MarketingCosts | null;
 };
 
+function copyToClipboard(text: string) {
+  void navigator.clipboard.writeText(text);
+}
+
 export default function DashboardPage() {
   const role = useAuthStore((s) => s.user?.role) as Role | undefined;
   const [ladipage, setLadipage] = useState<LadipagePipelineResponse | null>(null);
@@ -188,6 +194,13 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [batches, setBatches] = useState<ReportBatch[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  const [newBatchName, setNewBatchName] = useState("");
+  const [newBatchStart, setNewBatchStart] = useState("");
+  const [newBatchEnd, setNewBatchEnd] = useState("");
+  const [creatingBatch, setCreatingBatch] = useState(false);
+  const [createBatchError, setCreateBatchError] = useState<string | null>(null);
+  const [lastCreatedBatchId, setLastCreatedBatchId] = useState<string | null>(null);
 
   const selectedBatch = useMemo(
     () => batches.find((b) => b.id === selectedBatchId) ?? null,
@@ -203,6 +216,37 @@ export default function DashboardPage() {
       // If batch list fails, fallback to "latest overall".
       setBatches([]);
       setSelectedBatchId(null);
+    }
+  }
+
+  async function handleCreateReportBatch(e: FormEvent) {
+    e.preventDefault();
+    setCreateBatchError(null);
+    const name = newBatchName.trim();
+    if (!name || !newBatchStart || !newBatchEnd) {
+      setCreateBatchError("Nhập đủ tên khóa và khoảng ngày (YYYY-MM-DD).");
+      return;
+    }
+    setCreatingBatch(true);
+    try {
+      const { data } = await api.post<ReportBatch>("/report-batches", {
+        name,
+        startDate: newBatchStart,
+        endDate: newBatchEnd,
+      });
+      setLastCreatedBatchId(data.id);
+      await refreshBatches();
+      setSelectedBatchId(data.id);
+      setNewBatchName("");
+      setNewBatchStart("");
+      setNewBatchEnd("");
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string | string[] } } };
+      const m = ax.response?.data?.message;
+      const msg = Array.isArray(m) ? m.join(", ") : m ?? "Không tạo được khóa.";
+      setCreateBatchError(msg);
+    } finally {
+      setCreatingBatch(false);
     }
   }
 
@@ -260,6 +304,94 @@ export default function DashboardPage() {
           Theo dõi xu hướng và pipeline. Kết nối API phân tích khi bạn đã có dữ liệu báo cáo.
         </p>
       </div>
+
+      {role === "ADMIN" && (
+        <Card className="metronic-card overflow-hidden border-[#eff2f5] shadow-[0_0_20px_rgba(76,87,125,0.06)]">
+          <CardHeader className="border-b border-[#eff2f5] bg-white pb-4">
+            <CardTitle className="text-base font-semibold text-[#181c32]">
+              Tạo khóa báo cáo (chương trình)
+            </CardTitle>
+            <CardDescription className="mt-1 text-[#a1a5b7]">
+              Dùng <span className="font-mono text-xs">batch_id</span> trong webhook marketing
+              costs và các tích hợp khác. Chỉ tài khoản quản trị.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-5">
+            <form onSubmit={handleCreateReportBatch} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="batch-name">Tên khóa</Label>
+                  <Input
+                    id="batch-name"
+                    value={newBatchName}
+                    onChange={(e) => setNewBatchName(e.target.value)}
+                    placeholder="Ví dụ: Khóa tháng 4/2025"
+                    className="border-[#eff2f5]"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="batch-start">Ngày bắt đầu</Label>
+                  <Input
+                    id="batch-start"
+                    type="date"
+                    value={newBatchStart}
+                    onChange={(e) => setNewBatchStart(e.target.value)}
+                    className="border-[#eff2f5]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="batch-end">Ngày kết thúc</Label>
+                  <Input
+                    id="batch-end"
+                    type="date"
+                    value={newBatchEnd}
+                    onChange={(e) => setNewBatchEnd(e.target.value)}
+                    className="border-[#eff2f5]"
+                  />
+                </div>
+              </div>
+              {createBatchError && (
+                <p className="text-sm text-[#f1416c]">{createBatchError}</p>
+              )}
+              {lastCreatedBatchId && (
+                <div className="flex flex-col gap-2 rounded-lg border border-[#50cd89]/30 bg-[#50cd89]/8 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-[#181c32]">
+                    Đã tạo — ID khóa:{" "}
+                    <code className="break-all rounded bg-white/80 px-1.5 py-0.5 text-xs">
+                      {lastCreatedBatchId}
+                    </code>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 border-[#50cd89]/40"
+                    onClick={() => copyToClipboard(lastCreatedBatchId)}
+                  >
+                    <Copy className="mr-1.5 size-3.5" />
+                    Sao chép ID
+                  </Button>
+                </div>
+              )}
+              <Button
+                type="submit"
+                disabled={creatingBatch}
+                className="rounded-lg bg-[#009ef7] hover:bg-[#009ef7]/90"
+              >
+                {creatingBatch ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Đang tạo...
+                  </>
+                ) : (
+                  "Tạo khóa"
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* <div className="grid gap-6 md:grid-cols-2">
         <Card className="metronic-card overflow-hidden border-[#eff2f5] shadow-[0_0_20px_rgba(76,87,125,0.06)]">
@@ -354,6 +486,25 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : null}
+
+              {role === "ADMIN" && selectedBatch && (
+                <div className="mt-3 flex flex-col gap-2 rounded-lg border border-[#eff2f5] bg-[#f9f9fb] px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-[#a1a5b7]">
+                    <span className="font-semibold text-[#181c32]">ID khóa đang xem:</span>{" "}
+                    <code className="break-all text-[11px] text-[#181c32]">{selectedBatch.id}</code>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 shrink-0 border-[#eff2f5] px-2 text-xs"
+                    onClick={() => copyToClipboard(selectedBatch.id)}
+                  >
+                    <Copy className="mr-1 size-3" />
+                    Sao chép
+                  </Button>
+                </div>
+              )}
             </div>
             <Button
               type="button"
