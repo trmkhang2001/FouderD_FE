@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UserCircle2 } from "lucide-react";
 import { RoleGate } from "@/components/auth/role-gate";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,13 @@ export default function UsersPage() {
     >
   >({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /** Tránh stale closure: `saveUser` phải đọc bản `drafts` mới nhất (đặc biệt `role`). */
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   useEffect(() => {
     let cancelled = false;
@@ -92,9 +99,10 @@ export default function UsersPage() {
   }, [rows]);
 
   async function saveUser(id: string) {
-    const d = drafts[id];
-    const row = rows.find((r) => r.id === id);
+    const d = draftsRef.current[id];
+    const row = rowsRef.current.find((r) => r.id === id);
     if (!d || !row) return;
+    setSaveError(null);
     setSavingId(id);
     try {
       const body: Record<string, unknown> = {
@@ -112,10 +120,27 @@ export default function UsersPage() {
       await api.put(`/users/${id}`, body);
       const { data } = await api.get<UserRow[]>("/users");
       setRows(data);
+      const fresh = data.find((u) => u.id === id);
       setDrafts((cur) => ({
         ...cur,
-        [id]: { ...cur[id]!, password: "" },
+        [id]: fresh
+          ? {
+              role: fresh.role,
+              email: fresh.email,
+              name: fresh.name,
+              saleAccId: fresh.saleAccId,
+              password: "",
+            }
+          : { ...cur[id]!, password: "" },
       }));
+    } catch (e: unknown) {
+      const ax = e as {
+        response?: { data?: { message?: string | string[] } };
+      };
+      const m = ax.response?.data?.message;
+      setSaveError(
+        Array.isArray(m) ? m.join(", ") : m ?? "Không lưu được. Kiểm tra dữ liệu.",
+      );
     } finally {
       setSavingId(null);
     }
@@ -259,6 +284,11 @@ export default function UsersPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            {saveError && (
+              <div className="border-b border-[#f1416c]/20 bg-[#f1416c]/8 px-5 py-3 text-sm text-[#f1416c]">
+                {saveError}
+              </div>
+            )}
             <ul className="divide-y divide-[#eff2f5]">
               {rows.map((u) => {
                 const d = drafts[u.id];
