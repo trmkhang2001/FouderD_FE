@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { UserCircle2 } from "lucide-react";
+import { Trash2, UserCircle2 } from "lucide-react";
 import { RoleGate } from "@/components/auth/role-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
 
 type UserRow = {
   id: string;
@@ -30,6 +31,7 @@ const roleVi: Record<string, string> = {
 };
 
 export default function UsersPage() {
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const [rows, setRows] = useState<UserRow[]>([]);
   const [createForm, setCreateForm] = useState<{
     email: string;
@@ -53,6 +55,7 @@ export default function UsersPage() {
   >({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   /** Tránh stale closure: `saveUser` phải đọc bản `drafts` mới nhất (đặc biệt `role`). */
   const draftsRef = useRef(drafts);
@@ -143,6 +146,37 @@ export default function UsersPage() {
       );
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function deleteUser(id: string) {
+    if (id === currentUserId) return;
+    if (
+      !window.confirm(
+        "Xóa vĩnh viễn tài khoản này? Dữ liệu báo cáo / pipeline gắn user có thể bị xóa theo quy tắc hệ thống.",
+      )
+    ) {
+      return;
+    }
+    setSaveError(null);
+    setDeletingId(id);
+    try {
+      await api.delete(`/users/${id}`);
+      const { data } = await api.get<UserRow[]>("/users");
+      setRows(data);
+      setDrafts((cur) => {
+        const next = { ...cur };
+        delete next[id];
+        return next;
+      });
+    } catch (e: unknown) {
+      const ax = e as { response?: { data?: { message?: string | string[] } } };
+      const m = ax.response?.data?.message;
+      setSaveError(
+        Array.isArray(m) ? m.join(", ") : m ?? "Không xóa được người dùng.",
+      );
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -447,14 +481,41 @@ export default function UsersPage() {
                             </option>
                           ))}
                         </select>
-                        <Button
-                          type="button"
-                          onClick={() => void saveUser(u.id)}
-                          disabled={savingId === u.id}
-                          className="h-9 rounded-md bg-[#009ef7] px-4 font-semibold text-white hover:bg-[#0095e8]"
-                        >
-                          {savingId === u.id ? "Đang lưu..." : "Lưu"}
-                        </Button>
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            type="button"
+                            onClick={() => void saveUser(u.id)}
+                            disabled={savingId === u.id}
+                            className="h-9 rounded-md bg-[#009ef7] px-4 font-semibold text-white hover:bg-[#0095e8]"
+                          >
+                            {savingId === u.id ? "Đang lưu..." : "Lưu"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void deleteUser(u.id)}
+                            disabled={
+                              u.id === currentUserId ||
+                              deletingId === u.id ||
+                              savingId === u.id
+                            }
+                            className="h-9 border-[#f1416c]/30 text-[#f1416c] hover:bg-[#f1416c]/8"
+                            title={
+                              u.id === currentUserId
+                                ? "Không thể xóa chính bạn"
+                                : "Xóa tài khoản"
+                            }
+                          >
+                            {deletingId === u.id ? (
+                              "Đang xóa..."
+                            ) : (
+                              <>
+                                <Trash2 className="mr-1.5 inline size-3.5" />
+                                Xóa
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </li>

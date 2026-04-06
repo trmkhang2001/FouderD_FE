@@ -201,6 +201,7 @@ export default function DashboardPage() {
   const [creatingBatch, setCreatingBatch] = useState(false);
   const [createBatchError, setCreateBatchError] = useState<string | null>(null);
   const [lastCreatedBatchId, setLastCreatedBatchId] = useState<string | null>(null);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
 
   const selectedBatch = useMemo(
     () => batches.find((b) => b.id === selectedBatchId) ?? null,
@@ -240,6 +241,7 @@ export default function DashboardPage() {
       setNewBatchName("");
       setNewBatchStart("");
       setNewBatchEnd("");
+      setBatchModalOpen(false);
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { message?: string | string[] } } };
       const m = ax.response?.data?.message;
@@ -306,91 +308,126 @@ export default function DashboardPage() {
       </div>
 
       {role === "ADMIN" && (
-        <Card className="metronic-card overflow-hidden border-[#eff2f5] shadow-[0_0_20px_rgba(76,87,125,0.06)]">
-          <CardHeader className="border-b border-[#eff2f5] bg-white pb-4">
-            <CardTitle className="text-base font-semibold text-[#181c32]">
-              Tạo khóa báo cáo (chương trình)
-            </CardTitle>
-            <CardDescription className="mt-1 text-[#a1a5b7]">
-              Dùng <span className="font-mono text-xs">batch_id</span> trong webhook marketing
-              costs và các tích hợp khác. Chỉ tài khoản quản trị.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-5">
-            <form onSubmit={handleCreateReportBatch} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="batch-name">Tên khóa</Label>
-                  <Input
-                    id="batch-name"
-                    value={newBatchName}
-                    onChange={(e) => setNewBatchName(e.target.value)}
-                    placeholder="Ví dụ: Khóa tháng 4/2025"
-                    className="border-[#eff2f5]"
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="batch-start">Ngày bắt đầu</Label>
-                  <Input
-                    id="batch-start"
-                    type="date"
-                    value={newBatchStart}
-                    onChange={(e) => setNewBatchStart(e.target.value)}
-                    className="border-[#eff2f5]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="batch-end">Ngày kết thúc</Label>
-                  <Input
-                    id="batch-end"
-                    type="date"
-                    value={newBatchEnd}
-                    onChange={(e) => setNewBatchEnd(e.target.value)}
-                    className="border-[#eff2f5]"
-                  />
-                </div>
-              </div>
-              {createBatchError && (
-                <p className="text-sm text-[#f1416c]">{createBatchError}</p>
-              )}
-              {lastCreatedBatchId && (
-                <div className="flex flex-col gap-2 rounded-lg border border-[#50cd89]/30 bg-[#50cd89]/8 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-[#181c32]">
-                    Đã tạo — ID khóa:{" "}
-                    <code className="break-all rounded bg-white/80 px-1.5 py-0.5 text-xs">
-                      {lastCreatedBatchId}
-                    </code>
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 border-[#50cd89]/40"
-                    onClick={() => copyToClipboard(lastCreatedBatchId)}
-                  >
-                    <Copy className="mr-1.5 size-3.5" />
-                    Sao chép ID
-                  </Button>
-                </div>
-              )}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              className="rounded-lg bg-[#009ef7] hover:bg-[#009ef7]/90"
+              onClick={() => {
+                setCreateBatchError(null);
+                setBatchModalOpen(true);
+              }}
+            >
+              Tạo khóa báo cáo
+            </Button>
+          </div>
+          {lastCreatedBatchId && (
+            <div className="flex flex-col gap-2 rounded-xl border border-[#50cd89]/30 bg-[#50cd89]/8 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-[#181c32]">
+                Đã tạo khóa — ID:{" "}
+                <code className="break-all rounded bg-white/80 px-1.5 py-0.5 text-xs">
+                  {lastCreatedBatchId}
+                </code>
+              </span>
               <Button
-                type="submit"
-                disabled={creatingBatch}
-                className="rounded-lg bg-[#009ef7] hover:bg-[#009ef7]/90"
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 border-[#50cd89]/40"
+                onClick={() => copyToClipboard(lastCreatedBatchId)}
               >
-                {creatingBatch ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Đang tạo...
-                  </>
-                ) : (
-                  "Tạo khóa"
-                )}
+                <Copy className="mr-1.5 size-3.5" />
+                Sao chép ID
               </Button>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+          )}
+          {batchModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16 sm:pt-24">
+              <button
+                type="button"
+                className="fixed inset-0 cursor-default"
+                aria-label="Đóng"
+                onClick={() => !creatingBatch && setBatchModalOpen(false)}
+              />
+              <Card className="relative z-10 w-full max-w-lg border-[#eff2f5] shadow-xl">
+                <CardHeader className="border-b border-[#eff2f5] bg-white pb-4">
+                  <CardTitle className="text-base font-semibold text-[#181c32]">
+                    Tạo khóa báo cáo (chương trình)
+                  </CardTitle>
+                  <CardDescription className="text-[#a1a5b7]">
+                    Dùng <span className="font-mono text-xs">batch_id</span> trong webhook
+                    marketing costs. Khóa theo khoảng ngày (UTC).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-5">
+                  <form onSubmit={handleCreateReportBatch} className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="batch-name">Tên khóa</Label>
+                        <Input
+                          id="batch-name"
+                          value={newBatchName}
+                          onChange={(e) => setNewBatchName(e.target.value)}
+                          placeholder="Ví dụ: Khóa tháng 4/2025"
+                          className="border-[#eff2f5]"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="batch-start">Ngày bắt đầu</Label>
+                        <Input
+                          id="batch-start"
+                          type="date"
+                          value={newBatchStart}
+                          onChange={(e) => setNewBatchStart(e.target.value)}
+                          className="border-[#eff2f5]"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="batch-end">Ngày kết thúc</Label>
+                        <Input
+                          id="batch-end"
+                          type="date"
+                          value={newBatchEnd}
+                          onChange={(e) => setNewBatchEnd(e.target.value)}
+                          className="border-[#eff2f5]"
+                        />
+                      </div>
+                    </div>
+                    {createBatchError && (
+                      <p className="text-sm text-[#f1416c]">{createBatchError}</p>
+                    )}
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={creatingBatch}
+                        onClick={() => setBatchModalOpen(false)}
+                        className="rounded-lg border-[#eff2f5]"
+                      >
+                        Hủy
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={creatingBatch}
+                        className="rounded-lg bg-[#009ef7] hover:bg-[#009ef7]/90"
+                      >
+                        {creatingBatch ? (
+                          <>
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                            Đang tạo...
+                          </>
+                        ) : (
+                          "Tạo khóa"
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
       )}
 
       {/* <div className="grid gap-6 md:grid-cols-2">
